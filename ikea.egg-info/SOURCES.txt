@@ -1,0 +1,13 @@
+LICENSE
+README.rst
+setup.py
+ikea/__init__.py
+ikea/ikea.py
+ikea/linalg.py
+ikea/picp.py
+ikea/utils.py
+ikea.egg-info/PKG-INFO
+ikea.egg-info/SOURCES.txt
+ikea.egg-info/dependency_links.txt
+ikea.egg-info/requires.txt
+ikea.egg-info/top_level.txt
