@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import arviz as az
+import time
 
 from scipy.stats import norm
 
@@ -10,7 +11,7 @@ import os
 
 import shutil
 
-from utils import *
+from .utils import *
 
 class esmda(object):
     def __init__(self,  **kwargs):
@@ -91,9 +92,9 @@ class esmda(object):
             del_D = np.zeros_like(D)
 
             for i in range(self.nEnsemble):
-                del_D[:,i] = D[:,i] - D_mean
+                del_D[:,i] = (D[:,i] - D_mean)/np.sqrt(Ne-1)
 
-            Cdd = (del_D@del_D.T)/(Ne-1)
+            Cdd = (del_D@del_D.T)
     
     #Calculate Cmd
             M_mean = M.mean(axis=1)
@@ -107,8 +108,11 @@ class esmda(object):
             Duc = np.zeros_like(D)
             for i in range(self.nEnsemble):
                 Duc[:,i] = np.sqrt(alpha)*phi[:,i]*np.random.normal(0,1,Nd)+d_obs
-        
+         
+            start = time.time()
+
     #calculate M_update
+            print(' inversion type ', self.inversion_type)
             M_update = np.zeros_like(M)
             if(self.inversion_type == 'svd'):
                 for index in range(Ne):
@@ -117,6 +121,23 @@ class esmda(object):
                     K = Cdd + alpha*Cd
                     Kinv, svd_rank = sla.pinvh(K, return_rank=True)
                     M_update[:,index] = M[:,index]+Cmd@Kinv@(Duc[:,index]-D[:,index])
+                    
+            if(self.inversion_type == 'subspace'):
+                Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
+                Binv = np.diag(Wd**-(2)) 
+                for index in range(Ne):
+                    aCd = alpha * phi[:,index]**2
+                    Ainv = np.diag(aCd**(-1))
+                    bracket = Binv + Ud.T@Ainv@Ud
+                    bracketinv = np.diag(np.diag(bracket)**-1)
+                    Kinv = Ainv - Ainv@Ud@bracketinv@Ud.T@Ainv
+                    M_update[:,index] = M[:,index]+Cmd@Kinv@(Duc[:,index]-D[:,index]) 
+
+
+            end = time.time()
+            print('')
+            print('Time for inversion and M update ', end - start) 
+            print('')
     
     # update phi
 #==========================================================================================================
