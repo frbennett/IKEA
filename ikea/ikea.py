@@ -92,9 +92,9 @@ class esmda(object):
             del_D = np.zeros_like(D)
 
             for i in range(self.nEnsemble):
-                del_D[:,i] = (D[:,i] - D_mean)/np.sqrt(Ne-1)
+                del_D[:,i] = (D[:,i] - D_mean)
 
-            Cdd = (del_D@del_D.T)
+            Cdd = (del_D@del_D.T)/(Ne-1)
     
     #Calculate Cmd
             M_mean = M.mean(axis=1)
@@ -126,11 +126,11 @@ class esmda(object):
                 Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
                 Binv = np.diag(Wd**-(2)) 
                 for index in range(Ne):
-                    aCd = alpha * phi[:,index]**2
+                    aCd = (Ne-1) * alpha * phi[:,index]**2
                     Ainv = np.diag(aCd**(-1))
                     bracket = Binv + Ud.T@Ainv@Ud
                     bracketinv = np.diag(np.diag(bracket)**-1)
-                    Kinv = Ainv - Ainv@Ud@bracketinv@Ud.T@Ainv
+                    Kinv = (Ne-1) * (Ainv - Ainv@Ud@bracketinv@Ud.T@Ainv)
                     M_update[:,index] = M[:,index]+Cmd@Kinv@(Duc[:,index]-D[:,index]) 
 
 
