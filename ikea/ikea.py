@@ -10,7 +10,7 @@ import os
 
 import shutil
 
-from .utils import *
+from utils import *
 
 class esmda(object):
     def __init__(self,  **kwargs):
