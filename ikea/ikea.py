@@ -124,7 +124,7 @@ class esmda(object):
                     
             if(self.inversion_type == 'subspace'):
                 Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
-                Binv = np.diag(Wd**-(2)) 
+                Binv = np.diag(Wd**(-2)) 
                 for index in range(Ne):
                     aCd = (Ne-1) * alpha * phi[:,index]**2
                     Ainv = np.diag(aCd**(-1))
