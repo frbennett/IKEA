@@ -129,7 +129,7 @@ class esmda(object):
                     aCd = (Ne-1) * alpha * phi[:,index]**2
                     Ainv = np.diag(aCd**(-1))
                     bracket = Binv + Ud.T@Ainv@Ud
-                    bracketinv = np.inv(bracket)
+                    bracketinv = np.linalg.inv(bracket)
                     Kinv = (Ne-1) * (Ainv - Ainv@Ud@bracketinv@Ud.T@Ainv)
                     M_update[:,index] = M[:,index]+Cmd@Kinv@(Duc[:,index]-D[:,index]) 
 
