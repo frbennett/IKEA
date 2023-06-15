@@ -101,7 +101,7 @@ def mcmc(odata, D, num_mcmc, alpha_j, phi_std, phi_0):
         selection = esdata.query('group == @group')
         y = selection.Y.values
         G = selection.G.values
-        phi = np.std(y-G)**alpha_j
+        phi = np.std(y-G)*alpha_j
         esdata.loc[esdata['group'] == group, 'phi'] = phi
     return esdata.phi.values
 
