@@ -1,9 +1,11 @@
 import pandas as pd
 import numpy as np
+import dask.array as da
 import arviz as az
 import time
 
 from scipy.stats import norm
+from scipy.stats import truncnorm 
 
 import scipy.linalg as sla 
 
@@ -23,6 +25,7 @@ class esmda(object):
         self.nEnsemble = 100 #the number of ensembles
         self.maxIter = 10  #the number of iterations
         self.inversion_type = 'svd'
+        self.calculation_type = 'ikea'
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -51,9 +54,10 @@ class esmda(object):
         file_name = self.job_name + '_' + str(iter) + '_data.csv'
         iteration_data.to_csv(self.job_name + '/' + file_name)
         
-        iteration_phi = pd.DataFrame(phi.T, columns=self.observation_data.label.values)
-        file_name = self.job_name + '_' + str(iter) + '_phi.csv'
-        iteration_phi.T.to_csv(self.job_name + '/' + file_name)
+        if self.calculation_type == 'ikea':
+            iteration_phi = pd.DataFrame(phi.T, columns=self.observation_data.label.values)
+            file_name = self.job_name + '_' + str(iter) + '_phi.csv'
+            iteration_phi.T.to_csv(self.job_name + '/' + file_name)
         
         print(' ')
         print('Completed iteration ', iter)
@@ -67,8 +71,11 @@ class esmda(object):
         Nd = self.dLength
         Nm = self.mLength
         Na = self.maxIter
-#        phi = halfnorm.rvs(scale = 20,  size = Ne) 
-        phi = build_covariance_prior(Ne, self.observation_data, self.error)
+#       Covariance data 
+        if self.calculation_type == 'ikea' :
+            phi = build_covariance_prior(Ne, self.observation_data, self.error)
+        else :
+            phi = self.observation_data.noise.values
         d_obs = self.observation_data['Y']
         M = build_prior(self.parameter_data, self.nEnsemble)
         alpha = self.maxIter
@@ -87,14 +94,14 @@ class esmda(object):
                 print('maxiter ', iter)
                 return
             
-    # calculate Cdd
+    # calculate del_D
             D_mean = D.mean(axis=1)
             del_D = np.zeros_like(D)
 
             for i in range(self.nEnsemble):
                 del_D[:,i] = (D[:,i] - D_mean)
 
-            Cdd = (del_D@del_D.T)/(Ne-1)
+            
     
     #Calculate Cmd
             M_mean = M.mean(axis=1)
@@ -107,7 +114,10 @@ class esmda(object):
     # Perturb Observations
             Duc = np.zeros_like(D)
             for i in range(self.nEnsemble):
-                Duc[:,i] = np.sqrt(alpha)*phi[:,i]*np.random.normal(0,1,Nd)+d_obs
+                if self.calculation_type == 'ikea':
+                    Duc[:,i] = np.sqrt(alpha)*phi[:,i]*np.random.normal(0,1,Nd)+d_obs
+                else:
+                    Duc[:,i] = np.sqrt(alpha)*phi*np.random.normal(0,1,Nd)+d_obs
          
             start = time.time()
 
@@ -115,7 +125,8 @@ class esmda(object):
             print(' inversion type ', self.inversion_type)
             M_update = np.zeros_like(M)
             if(self.inversion_type == 'svd'):
-                for index in range(Ne):
+                Cdd = (del_D@del_D.T)/(Ne-1)  
+                for index in range(Ne): 
                     Cd = np.zeros([self.dLength, self.dLength])
                     np.fill_diagonal(Cd,phi[:,index]**2)
                     K = Cdd + alpha*Cd
@@ -148,9 +159,16 @@ class esmda(object):
                     M_update[:,index] = M[:,index]+Cmd@Kinv@(Duc[:,index]-D[:,index]) 
 
             if(self.inversion_type == 'efast_subspace'):
+                rand_phi = np.zeros(Nd)
+                for i in range(Nd):
+                    phi_mean = np.mean(phi[i,:])
+                    phi_std = np.std(phi[i,:])
+                    rand_phi[i] = truncnorm.rvs(-1,1,phi_mean,phi_std)
+
                 Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
                 Binv = np.diag(Wd**(-2)) 
-                aCd = (Ne-1) * alpha * phi.mean(axis=1)**2
+                # aCd = (Ne-1) * alpha * phi.mean(axis=1)**2
+                aCd = (Ne-1) * alpha * rand_phi**2
                 # Ainv = np.diag(aCd**(-1))
                 AinvUd = ((aCd**(-1))*Ud.T).T
                 #bracket = Binv + Ud.T@Ainv@Ud
@@ -160,6 +178,53 @@ class esmda(object):
                 Kinv = (Ne-1) * (np.diag(aCd**(-1)) - AinvUd@bracketinv@AinvUd.T)
                 M_update = M+Cmd@Kinv@(Duc-D) 
 
+            if(self.inversion_type == 'dask'):
+                rand_phi = np.zeros(Nd)
+                for i in range(Nd):
+                    phi_mean = np.mean(phi[i,:])
+                    phi_std = np.std(phi[i,:])
+                    rand_phi[i] = truncnorm.rvs(-1,1,phi_mean,phi_std)
+
+                M_da = da.from_array(M, chunks='auto')
+                Cmd_da = da.from_array(Cmd, chunks='auto')
+                Duc_da = da.from_array(Duc, chunks=(500,Ne))
+                D_da = da.from_array(D, chunks=(500,Ne))
+                rand_phi_da = da.from_array(rand_phi, chunks=500)
+                
+                Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
+                Ud = da.from_array(Ud, chunks=(500,Ne))
+                Wd = da.from_array(Wd, chunks='auto')
+                
+                Binv = np.diag(Wd**(-2)) 
+                # aCd = (Ne-1) * alpha * phi.mean(axis=1)**2
+                aCd = (Ne-1) * alpha * rand_phi_da**2
+
+                AinvUd = ((aCd**(-1))*Ud.T).T
+                #bracket = Binv + Ud.T@Ainv@Ud
+                bracket = Binv + Ud.T@AinvUd
+                bracketinv = np.linalg.inv(bracket)
+
+                Kinv = (Ne-1) * (np.diag(aCd**(-1)) - AinvUd@bracketinv@AinvUd.T)
+                M_update_da = M_da+Cmd_da@Kinv@(Duc_da-D_da) 
+
+                M_update = M_update_da.compute() 
+
+
+
+            if(self.inversion_type == 'esmda'):
+
+                Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
+                Binv = np.diag(Wd**(-2)) 
+                # aCd = (Ne-1) * alpha * phi.mean(axis=1)**2
+                aCd = (Ne-1) * alpha * phi**2
+                # Ainv = np.diag(aCd**(-1))
+                AinvUd = ((aCd**(-1))*Ud.T).T
+                #bracket = Binv + Ud.T@Ainv@Ud
+                bracket = Binv + Ud.T@AinvUd
+                bracketinv = np.linalg.inv(bracket)
+                #Kinv = (Ne-1) * (Ainv - Ainv@Ud@bracketinv@Ud.T@Ainv)
+                Kinv = (Ne-1) * (np.diag(aCd**(-1)) - AinvUd@bracketinv@AinvUd.T)
+                M_update = M+Cmd@Kinv@(Duc-D) 
 
 
             end = time.time()
@@ -175,12 +240,13 @@ class esmda(object):
 #                phi_update_std = (D[:,i]-d_obs).std()
 #                phi_update_mean = (np.abs((D[:,i]-d_obs))).mean()
 #                phi_update[i] = phi_update_std
-            phi_std = {}
-            phi_val = {}
-            for i in short_ref_list:
-                phi_std[i] = np.std(phi[short_ref_list[i],:])
-                phi_val[i] = phi[short_ref_list[i],:]
-            phi = covariance_matrix(D, self.observation_data, self.error, alpha_j, phi_std, phi_val)
+            if self.calculation_type == 'ikea' :
+                phi_std = {}
+                phi_val = {}
+                for i in short_ref_list:
+                    phi_std[i] = np.std(phi[short_ref_list[i],:])
+                    phi_val[i] = phi[short_ref_list[i],:]
+                phi = covariance_matrix(D, self.observation_data, self.error, alpha_j, phi_std, phi_val)
 #        phi_update[N] = np.random.normal(loc=phi_update_mean, scale=phi_update_std, size=None)
 
 #            print('average phi_update ', np.mean(phi_update) )
@@ -194,9 +260,10 @@ class esmda(object):
     
             M = M_update
         
-        iteration_phi = pd.DataFrame(phi.T, columns=self.observation_data.label.values)
-        file_name = self.job_name + '_' + 'final' + '_phi.csv'
-        iteration_phi.T.to_csv(self.job_name + '/' + file_name)
+        if self.calculation_type == 'ikea':
+            iteration_phi = pd.DataFrame(phi.T, columns=self.observation_data.label.values)
+            file_name = self.job_name + '_' + 'final' + '_phi.csv'
+            iteration_phi.T.to_csv(self.job_name + '/' + file_name)
 
 
     def predictive_posterior(self, n):
