@@ -226,6 +226,21 @@ class esmda(object):
                 Kinv = (Ne-1) * (np.diag(aCd**(-1)) - AinvUd@bracketinv@AinvUd.T)
                 M_update = M+Cmd@Kinv@(Duc-D) 
 
+            if(self.inversion_type == 'esmda_dask'):
+
+                Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
+                Binv = np.diag(Wd**(-2)) 
+                # aCd = (Ne-1) * alpha * phi.mean(axis=1)**2
+                aCd = (Ne-1) * alpha * phi**2
+                # Ainv = np.diag(aCd**(-1))
+                AinvUd = ((aCd**(-1))*Ud.T).T
+                #bracket = Binv + Ud.T@Ainv@Ud
+                bracket = Binv + Ud.T@AinvUd
+                bracketinv = np.linalg.inv(bracket)
+                #Kinv = (Ne-1) * (Ainv - Ainv@Ud@bracketinv@Ud.T@Ainv)
+                Kinv = (Ne-1) * (np.diag(aCd**(-1)) - AinvUd@bracketinv@AinvUd.T)
+                M_update = M+Cmd@Kinv@(Duc-D) 
+
 
             end = time.time()
             print('')
