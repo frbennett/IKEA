@@ -1,8 +1,11 @@
-Metadata-Version: 2.1
+Metadata-Version: 1.0
 Name: ikea
 Version: 0.2
 Summary: Python implementation of the Flexible ES-MDA
+Home-page: UNKNOWN
 Author: Frederick Bennett
 Author-email: frederick.bennett@des.qld.gov.au
+License: UNKNOWN
+Description: UNKNOWN
 Keywords: ensemble smoother data assimilation
-License-File: LICENSE
+Platform: UNKNOWN
