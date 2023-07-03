@@ -100,12 +100,12 @@ def pseudo_inverse(del_D, alpha, Cd, nEnsemble, dLength, mLength, type='svd'):
 def dask_inverse(M, Cmd, Duc, D, del_D, phi, alpha, Ne):
     M_da = da.from_array(M, chunks='auto')
     Cmd_da = da.from_array(Cmd, chunks='auto')
-    Duc_da = da.from_array(Duc, chunks=(500,Ne))
-    D_da = da.from_array(D, chunks=(500,Ne))
-    rand_phi_da = da.from_array(phi, chunks=500)
+    Duc_da = da.from_array(Duc, chunks=('auto','auto'))
+    D_da = da.from_array(D, chunks=('auto','auto'))
+    rand_phi_da = da.from_array(phi, chunks='auto')
                 
     Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
-    Ud = da.from_array(Ud, chunks=(500,Ne))
+    Ud = da.from_array(Ud, chunks=('auto','auto'))
     Wd = da.from_array(Wd, chunks='auto')
                 
     Binv = np.diag(Wd**(-2)) 
