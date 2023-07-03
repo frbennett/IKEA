@@ -71,19 +71,22 @@ def inv_trans(es_parameters, mCurrent):
         M[:,i] = inverse_scale_param(scaled, es_parameters['lower'].values, es_parameters['upper'].values)
     return M
     
-    
+         
+ 
 def covariance_matrix(D, data, error, alpha_j, phi_std, phi_val):
     Nd, Ne = np.shape(D)
-    delayed_funcs = []
+    result = np.zeros_like(D)
+#    delayed_funcs = []
     for i in range(Ne):
         phi_0 = {}
         for j in phi_val:
             phi_0[j] = np.mean(phi_val[j])  
-        delayed_funcs.append(delayed(mcmc)(data,D[:,i], 1000, alpha_j, phi_std, phi_0))
-    result = Parallel(n_jobs=-1, verbose=5)(delayed_funcs)
-    return np.array(result).T
-         
-        
+#        delayed_funcs.append(delayed(mcmc)(data,D[:,i], 1000, alpha_j, phi_std, phi_0))
+        result[:,i] = mcmc(data,D[:,i], 1000, alpha_j, phi_std, phi_0) 
+#    result = Parallel(n_jobs=1, verbose=5, backend='threading')(delayed_funcs)
+#    return np.array(result).T
+    return result
+       
 def build_covariance_prior(Ne, data, error):
     Nd = len(data)
     cov_prior = np.zeros([Nd, Ne])

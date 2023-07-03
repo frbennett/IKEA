@@ -14,6 +14,7 @@ import os
 import shutil
 
 from .utils import *
+from .linalg import *
 
 class esmda(object):
     def __init__(self,  **kwargs):
@@ -164,19 +165,8 @@ class esmda(object):
                     phi_mean = np.mean(phi[i,:])
                     phi_std = np.std(phi[i,:])
                     rand_phi[i] = truncnorm.rvs(-1,1,phi_mean,phi_std)
-
-                Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
-                Binv = np.diag(Wd**(-2)) 
-                # aCd = (Ne-1) * alpha * phi.mean(axis=1)**2
-                aCd = (Ne-1) * alpha * rand_phi**2
-                # Ainv = np.diag(aCd**(-1))
-                AinvUd = ((aCd**(-1))*Ud.T).T
-                #bracket = Binv + Ud.T@Ainv@Ud
-                bracket = Binv + Ud.T@AinvUd
-                bracketinv = np.linalg.inv(bracket)
-                #Kinv = (Ne-1) * (Ainv - Ainv@Ud@bracketinv@Ud.T@Ainv)
-                Kinv = (Ne-1) * (np.diag(aCd**(-1)) - AinvUd@bracketinv@AinvUd.T)
-                M_update = M+Cmd@Kinv@(Duc-D) 
+                
+                M_update = efast_inverse(M, Cmd, Duc, D, del_D, rand_phi, alpha, Ne) 
 
             if(self.inversion_type == 'dask'):
                 rand_phi = np.zeros(Nd)
@@ -184,31 +174,7 @@ class esmda(object):
                     phi_mean = np.mean(phi[i,:])
                     phi_std = np.std(phi[i,:])
                     rand_phi[i] = truncnorm.rvs(-1,1,phi_mean,phi_std)
-
-                M_da = da.from_array(M, chunks='auto')
-                Cmd_da = da.from_array(Cmd, chunks='auto')
-                Duc_da = da.from_array(Duc, chunks=(500,Ne))
-                D_da = da.from_array(D, chunks=(500,Ne))
-                rand_phi_da = da.from_array(rand_phi, chunks=500)
-                
-                Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
-                Ud = da.from_array(Ud, chunks=(500,Ne))
-                Wd = da.from_array(Wd, chunks='auto')
-                
-                Binv = np.diag(Wd**(-2)) 
-                # aCd = (Ne-1) * alpha * phi.mean(axis=1)**2
-                aCd = (Ne-1) * alpha * rand_phi_da**2
-
-                AinvUd = ((aCd**(-1))*Ud.T).T
-                #bracket = Binv + Ud.T@Ainv@Ud
-                bracket = Binv + Ud.T@AinvUd
-                bracketinv = np.linalg.inv(bracket)
-
-                Kinv = (Ne-1) * (np.diag(aCd**(-1)) - AinvUd@bracketinv@AinvUd.T)
-                M_update_da = M_da+Cmd_da@Kinv@(Duc_da-D_da) 
-
-                M_update = M_update_da.compute() 
-
+                M_update = dask_inverse(M, Cmd, Duc, D, del_D, rand_phi, alpha, Ne)
 
 
             if(self.inversion_type == 'esmda'):

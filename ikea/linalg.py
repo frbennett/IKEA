@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.linalg as sla
 from sklearn.utils.extmath import randomized_svd
+import dask.array as da 
 
 def power_iteration(A, Omega, power_iter = 3):
     Y = A @ Omega
@@ -96,5 +97,45 @@ def pseudo_inverse(del_D, alpha, Cd, nEnsemble, dLength, mLength, type='svd'):
 
     return Kinv
 
+def dask_inverse(M, Cmd, Duc, D, del_D, phi, alpha, Ne):
+    M_da = da.from_array(M, chunks='auto')
+    Cmd_da = da.from_array(Cmd, chunks='auto')
+    Duc_da = da.from_array(Duc, chunks=(500,Ne))
+    D_da = da.from_array(D, chunks=(500,Ne))
+    rand_phi_da = da.from_array(phi, chunks=500)
+                
+    Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
+    Ud = da.from_array(Ud, chunks=(500,Ne))
+    Wd = da.from_array(Wd, chunks='auto')
+                
+    Binv = np.diag(Wd**(-2)) 
+                # aCd = (Ne-1) * alpha * phi.mean(axis=1)**2
+    aCd = (Ne-1) * alpha * rand_phi_da**2
+
+    AinvUd = ((aCd**(-1))*Ud.T).T
+                #bracket = Binv + Ud.T@Ainv@Ud
+    bracket = Binv + Ud.T@AinvUd
+    bracketinv = np.linalg.inv(bracket)
+
+    Kinv = (Ne-1) * (np.diag(aCd**(-1)) - AinvUd@bracketinv@AinvUd.T)
+    M_update_da = M_da+Cmd_da@Kinv@(Duc_da-D_da) 
+
+    M_update = M_update_da.compute() 
+    del M_update_da
+    return M_update
 
 
+def efast_inverse(M, Cmd, Duc, D, del_D, rand_phi, alpha, Ne):
+    Ud, Wd, Vd = np.linalg.svd(del_D, full_matrices=False, compute_uv=True, hermitian=False)
+    Binv = np.diag(Wd**(-2)) 
+    # aCd = (Ne-1) * alpha * phi.mean(axis=1)**2
+    aCd = (Ne-1) * alpha * rand_phi**2
+    # Ainv = np.diag(aCd**(-1))
+    AinvUd = ((aCd**(-1))*Ud.T).T
+    #bracket = Binv + Ud.T@Ainv@Ud
+    bracket = Binv + Ud.T@AinvUd
+    bracketinv = np.linalg.inv(bracket)
+    #Kinv = (Ne-1) * (Ainv - Ainv@Ud@bracketinv@Ud.T@Ainv)
+    Kinv = (Ne-1) * (np.diag(aCd**(-1)) - AinvUd@bracketinv@AinvUd.T)
+    M_update = M+Cmd@Kinv@(Duc-D) 
+    return M_update
